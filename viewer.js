@@ -279,7 +279,7 @@ function extractParagraphs(items) {
   let g = [L[0]];
   for (let i = 1; i < L.length; i++) {
     const prev = L[i - 1], cur = L[i];
-    const bigGap    = Math.abs(prev.y - cur.y) > lineH * 1.6;
+    const bigGap    = Math.abs(prev.y - cur.y) > lineH * 1.3;
     const indented  = cur.startX > leftMargin + indentTol;
     const prevShort = prev.endX < rightEdge - shortTol;
     if (bigGap || indented || prevShort) { groups.push(g); g = []; }
