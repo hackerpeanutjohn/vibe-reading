@@ -38,6 +38,8 @@ const els = {
   aiBadge:       document.getElementById('aiBadge'),
   translateBtn:  document.getElementById('translateBtn'),
   stopBtn:       document.getElementById('stopBtn'),
+  fontDec:       document.getElementById('fontDec'),
+  fontInc:       document.getElementById('fontInc'),
   statusText:    document.getElementById('statusText'),
   progressWrap:  document.getElementById('progressWrap'),
   progressBar:   document.getElementById('progressBar'),
@@ -73,6 +75,7 @@ let segEls        = [];     // paragraph index -> right-pane segment element
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   populateTargetSelect();
+  setupFontControl();
   setupDivider();
   setupSelectionAsk();
   setupReverseLocate();
@@ -122,6 +125,25 @@ function populateTargetSelect() {
   });
   // set immediate default before storage resolves
   els.targetLang.value = browserDefaultTarget();
+}
+
+// ─── Translation font-size control (persisted) ──────────────────────────────────
+const FONT_MIN = 10, FONT_MAX = 26, FONT_DEFAULT = 13;
+let transFont = FONT_DEFAULT;
+
+function applyTransFont(px) {
+  transFont = Math.max(FONT_MIN, Math.min(FONT_MAX, px));
+  els.results.style.setProperty('--trans-font', transFont + 'px');
+  chrome.storage.local.set({ transFont });
+}
+
+function setupFontControl() {
+  chrome.storage.local.get('transFont', ({ transFont: saved }) => {
+    applyTransFont(saved || FONT_DEFAULT);
+  });
+  applyTransFont(transFont);
+  els.fontDec.addEventListener('click', () => applyTransFont(transFont - 1));
+  els.fontInc.addEventListener('click', () => applyTransFont(transFont + 1));
 }
 
 // ─── AI availability ──────────────────────────────────────────────────────────
