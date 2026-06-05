@@ -203,11 +203,14 @@ async function loadAndRenderPdf() {
     const content = await page.getTextContent();
     await page.render({ canvasContext: canvas.getContext('2d'), viewport: renderVp }).promise;
 
-    // Transparent text layer for native text selection (requirement 6)
+    // Transparent text layer for native text selection (requirement 6).
+    // pdf.js 3.x positions the spans via the CSS var --scale-factor; without it
+    // the spans collapse to zero size and the text becomes unselectable.
     const textLayer = document.createElement('div');
     textLayer.className = 'textLayer';
     textLayer.style.width  = viewport.width + 'px';
     textLayer.style.height = viewport.height + 'px';
+    textLayer.style.setProperty('--scale-factor', renderScale);
     wrap.appendChild(textLayer);
     try {
       await PDFJS.renderTextLayer({ textContentSource: content, container: textLayer, viewport, textDivs: [] }).promise;
