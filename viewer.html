@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PDF 中文翻譯檢視器</title>
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+
+  <header id="topbar">
+    <div class="t-left">
+      <span class="logo">📖</span>
+      <span class="title">PDF 翻譯</span>
+      <span id="fileName" class="file-name">—</span>
+    </div>
+    <div class="t-right">
+      <span id="srcLangInfo" class="src-info" title="自動偵測來源語言"></span>
+      <label class="label" for="targetLang">翻譯成</label>
+      <select id="targetLang" class="select"></select>
+      <span id="aiBadge" class="badge">偵測中...</span>
+      <button id="translateBtn" class="btn btn-primary" disabled>▶ 翻譯</button>
+      <button id="stopBtn" class="btn btn-stop" style="display:none">■ 停止</button>
+    </div>
+  </header>
+
+  <div id="statusRow" class="status-row">
+    <span id="statusText" class="status-text">載入中...</span>
+    <div id="progressWrap" class="progress-wrap" style="display:none">
+      <div class="progress-track"><div id="progressBar" class="progress-fill"></div></div>
+      <span id="progressLabel" class="progress-label"></span>
+    </div>
+  </div>
+
+  <div id="errorBox" class="error-box" style="display:none"></div>
+
+  <main id="split">
+    <section id="pdfPane" class="pdf-pane">
+      <div id="pdfInner" class="pdf-inner"></div>
+    </section>
+
+    <div id="divider" class="divider"></div>
+
+    <aside id="transPane" class="trans-pane">
+      <div id="summary" class="summary" style="display:none"></div>
+      <div id="results" class="results">
+        <div class="hint">PDF 載入後會<b>自動開始翻譯</b>。<br>
+          • 點任一段翻譯 → 左側論文捲動並高亮原文<br>
+          • 在左側論文<b>反白文字</b> → 可向 Gemini Nano 提問<br>
+          • 讀完整份論文後，頂部會出現 <b>AI 摘要</b></div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Floating "ask AI" button shown on text selection -->
+  <button id="askFloat" class="ask-float" style="display:none">🤖 問 AI</button>
+
+  <!-- Ask-Nano modal -->
+  <div id="askModal" class="ask-modal" style="display:none">
+    <div class="ask-box">
+      <div class="ask-head">
+        <span>🤖 問 Gemini Nano</span>
+        <span id="askClose" class="ask-close">✕</span>
+      </div>
+      <div class="ask-sel-label">反白的文字：</div>
+      <div id="askSel" class="ask-sel"></div>
+      <textarea id="askInput" class="ask-input" rows="2"
+        placeholder="想問什麼？（留空＝請 AI 解釋這段文字）"></textarea>
+      <button id="askSend" class="btn btn-primary ask-send">送出</button>
+      <div id="askAnswer" class="ask-answer"></div>
+    </div>
+  </div>
+
+  <script src="lib/pdf.min.js"></script>
+  <script src="viewer.js"></script>
+</body>
+</html>
