@@ -14,7 +14,9 @@
       <span class="title">氛圍閱讀 Vibe Reading</span>
       <a class="repo-link" href="https://github.com/aaaddress1/vibe-reading"
          target="_blank" rel="noopener" title="在 GitHub 上查看原始碼">⭐ GitHub</a>
-      <span id="fileName" class="file-name">—</span>
+    </div>
+    <div class="t-center">
+      <span id="pdfSource" class="pdf-source" title="點擊開啟原始 PDF">—</span>
     </div>
     <div class="t-right">
       <span id="srcLangInfo" class="src-info" title="自動偵測來源語言"></span>
@@ -46,6 +48,14 @@
     </section>
 
     <div id="divider" class="divider"></div>
+
+    <!-- Floating zoom control for the left PDF pane -->
+    <div id="zoomCtrl" class="zoom-ctrl">
+      <button id="zoomOut" class="zoom-btn" title="縮小">−</button>
+      <span id="zoomLabel" class="zoom-label">100%</span>
+      <button id="zoomIn" class="zoom-btn" title="放大">＋</button>
+      <button id="zoomFit" class="zoom-btn" title="符合寬度">⤢</button>
+    </div>
 
     <aside id="transPane" class="trans-pane">
       <div id="summary" class="summary" style="display:none"></div>

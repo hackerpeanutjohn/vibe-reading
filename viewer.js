@@ -32,8 +32,12 @@ function langName(code) {
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 const els = {
-  fileName:      document.getElementById('fileName'),
+  pdfSource:     document.getElementById('pdfSource'),
   srcLangInfo:   document.getElementById('srcLangInfo'),
+  zoomIn:        document.getElementById('zoomIn'),
+  zoomOut:       document.getElementById('zoomOut'),
+  zoomFit:       document.getElementById('zoomFit'),
+  zoomLabel:     document.getElementById('zoomLabel'),
   targetLang:    document.getElementById('targetLang'),
   aiBadge:       document.getElementById('aiBadge'),
   translateBtn:  document.getElementById('translateBtn'),
@@ -82,6 +86,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupDivider();
   setupSelectionAsk();
   setupReverseLocate();
+  setupZoom();
 
   els.translateBtn.addEventListener('click', () => startTranslation(true));
   els.stopBtn.addEventListener('click', () => {
@@ -104,7 +109,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  els.fileName.textContent = decodeURIComponent(pdfUrl.split('/').pop().split('?')[0]) || pdfUrl;
+  showPdfSource();
 
   try {
     await loadAndRenderPdf();
@@ -183,7 +188,20 @@ async function checkAI() {
   );
 }
 
+// ─── PDF source chip + tab title ─────────────────────────────────────────────────
+function showPdfSource() {
+  const isFile = /^file:/i.test(pdfUrl);
+  const fname  = decodeURIComponent(pdfUrl.split('/').pop().split('?')[0]) || pdfUrl;
+  els.pdfSource.textContent = isFile ? `📁 本機檔案：${fname}` : `🌐 ${pdfUrl}`;
+  els.pdfSource.title = pdfUrl;
+  els.pdfSource.onclick = () => window.open(pdfUrl, '_blank');
+  document.title = `[氛圍閱讀] ${fname}`;   // provisional; refined after metadata loads
+}
+
 // ─── Load & render PDF (canvas + selectable text layer) ─────────────────────────
+let baseScale = 1;   // fit-to-width scale
+let zoom      = 1;   // user zoom multiplier
+
 async function loadAndRenderPdf() {
   setStatus('下載 PDF 檔案...');
   setIndeterminate(true);
@@ -195,15 +213,35 @@ async function loadAndRenderPdf() {
   setIndeterminate(false);
 
   pdfDoc = await PDFJS.getDocument({ data: buf }).promise;
-  const total = pdfDoc.numPages;
 
+  // Tab title = [氛圍閱讀] <PDF metadata title, else filename>
+  try {
+    const meta = await pdfDoc.getMetadata();
+    const docTitle = meta?.info?.Title?.trim();
+    if (docTitle) document.title = `[氛圍閱讀] ${docTitle}`;
+  } catch (_) {}
+
+  // fit-to-width base scale
   const firstPage = await pdfDoc.getPage(1);
   const base = firstPage.getViewport({ scale: 1 });
   const paneW = els.pdfPane.clientWidth - 48;
-  renderScale = Math.max(0.5, Math.min(2.5, paneW / base.width));
-  const dpr = window.devicePixelRatio || 1;
+  baseScale = Math.max(0.5, Math.min(2.5, paneW / base.width));
+  zoom = 1;
+  renderScale = baseScale * zoom;
 
   paragraphs = [];
+  await renderPages(true);
+  updateZoomLabel();
+}
+
+// Render (or re-render) every page at the current renderScale.
+// Paragraphs are only extracted on the first pass (their rects are in
+// scale-independent PDF coordinates, so zooming doesn't require recompute).
+async function renderPages(computeParagraphs) {
+  const dpr = window.devicePixelRatio || 1;
+  const total = pdfDoc.numPages;
+  els.pdfInner.innerHTML = '';
+  for (const k in pageWraps) delete pageWraps[k];
 
   for (let p = 1; p <= total; p++) {
     setStatus(`渲染第 ${p} / ${total} 頁`);
@@ -247,10 +285,49 @@ async function loadAndRenderPdf() {
 
     pageWraps[p] = { wrap, viewport };
 
-    for (const para of extractParagraphs(content.items)) {
-      paragraphs.push({ page: p, text: para.text, rect: para.rect });
+    if (computeParagraphs) {
+      for (const para of extractParagraphs(content.items)) {
+        paragraphs.push({ page: p, text: para.text, rect: para.rect });
+      }
     }
   }
+}
+
+// ─── Zoom (independent of browser page zoom) ─────────────────────────────────────
+let rerenderT = null;
+
+function updateZoomLabel() {
+  if (els.zoomLabel) els.zoomLabel.textContent = Math.round(zoom * 100) + '%';
+}
+
+function setZoom(z) {
+  if (!pdfDoc) return;
+  zoom = Math.max(0.4, Math.min(4, z));
+  renderScale = baseScale * zoom;
+  updateZoomLabel();
+  const ratio = els.pdfPane.scrollTop / Math.max(1, els.pdfInner.scrollHeight);
+  clearTimeout(rerenderT);
+  rerenderT = setTimeout(async () => {
+    setIndeterminate(true);
+    setStatus('縮放重繪中…');
+    await renderPages(false);
+    setIndeterminate(false);
+    els.pdfPane.scrollTop = ratio * els.pdfInner.scrollHeight;   // keep view roughly anchored
+    setStatus('完成');
+  }, 130);
+}
+
+function setupZoom() {
+  els.zoomIn.addEventListener('click', () => setZoom(zoom * 1.2));
+  els.zoomOut.addEventListener('click', () => setZoom(zoom / 1.2));
+  els.zoomFit.addEventListener('click', () => setZoom(1));
+  // Ctrl+wheel / trackpad pinch zooms ONLY the PDF pane (preventDefault stops
+  // the browser from zooming the whole page).
+  els.pdfPane.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    setZoom(zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12));
+  }, { passive: false });
 }
 
 function extractParagraphs(items) {
