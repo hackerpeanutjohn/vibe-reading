@@ -9,7 +9,9 @@
 
 ### 🎬 Demo
 
-https://github.com/aaaddress1/vibe-reading/raw/main/demo.mp4
+![氛圍閱讀 Vibe Reading Demo](demo.gif)
+
+> 🎥 [觀看完整高畫質影片（demo.mp4）](https://github.com/aaaddress1/vibe-reading/raw/main/demo.mp4)
 
 ---
 
