@@ -369,18 +369,32 @@ function setupKeyboardScroll() {
     const pane = els.pdfPane;
     const line = 90, page = pane.clientHeight * 0.9;
     switch (e.key) {
-      case 'ArrowDown':  pane.scrollTop  += line; break;
-      case 'ArrowUp':    pane.scrollTop  -= line; break;
-      case 'ArrowRight': pane.scrollLeft += line; break;
-      case 'ArrowLeft':  pane.scrollLeft -= line; break;
-      case 'PageDown':   pane.scrollTop  += page; break;
-      case 'PageUp':     pane.scrollTop  -= page; break;
-      case 'Home':       pane.scrollTop   = 0; break;
-      case 'End':        pane.scrollTop   = pane.scrollHeight; break;
+      case 'ArrowDown':  pane.scrollTop += line; break;
+      case 'ArrowUp':    pane.scrollTop -= line; break;
+      case 'ArrowRight': gotoPage(1);  break;   // next page
+      case 'ArrowLeft':  gotoPage(-1); break;   // previous page
+      case 'PageDown':   pane.scrollTop += page; break;
+      case 'PageUp':     pane.scrollTop -= page; break;
+      case 'Home':       pane.scrollTop  = 0; break;
+      case 'End':        pane.scrollTop  = pane.scrollHeight; break;
       default: return;
     }
     e.preventDefault();
   });
+}
+
+// Jump to the previous/next page (←/→), like the native PDF viewer
+function gotoPage(delta) {
+  if (!pdfDoc) return;
+  const paneTop = els.pdfPane.getBoundingClientRect().top;
+  let curr = 1;
+  for (let p = 1; p <= pdfDoc.numPages; p++) {
+    const pg = pageWraps[p];
+    if (pg && pg.wrap.getBoundingClientRect().bottom > paneTop + 4) { curr = p; break; }
+  }
+  const target = Math.max(1, Math.min(pdfDoc.numPages, curr + delta));
+  const tr = pageWraps[target]?.wrap.getBoundingClientRect();
+  if (tr) els.pdfPane.scrollBy({ top: (tr.top - paneTop) - 8, behavior: 'smooth' });
 }
 
 function extractParagraphs(items) {
