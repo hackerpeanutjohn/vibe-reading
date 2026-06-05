@@ -248,12 +248,14 @@ function extractParagraphs(items) {
 
   // compute per-line geometry (left/right edges, text)
   const L = rawLines.map(l => {
-    const starts = l.items.map(it => it.transform[4]);
-    const ends   = l.items.map(it => it.transform[4] + (it.width || 0));
+    const starts  = l.items.map(it => it.transform[4]);
+    const ends    = l.items.map(it => it.transform[4] + (it.width || 0));
+    const heights = l.items.map(it => it.height || 10).sort((a, b) => a - b);
     return {
       y: l.y,
       startX: Math.min(...starts),
       endX: Math.max(...ends),
+      fontH: heights[Math.floor(heights.length / 2)] || 10,  // local font size
       items: l.items,
       text: l.items.map(it => it.str).join(' ').replace(/\s+/g, ' ').trim(),
     };
@@ -268,21 +270,27 @@ function extractParagraphs(items) {
   const leftMargin = Number(Object.entries(startBins).sort((a, b) => b[1] - a[1])[0][0]);
   const rightEdge  = Math.max(...L.map(l => l.endX));
   const colWidth   = Math.max(1, rightEdge - leftMargin);
-  const gaps = L.slice(1).map((l, i) => Math.abs(L[i].y - l.y)).sort((a, b) => a - b);
-  const lineH = gaps[Math.floor(gaps.length / 2)] || 14;
 
   const indentTol = Math.max(12, colWidth * 0.025);  // first-line indent
   const shortTol  = Math.max(16, colWidth * 0.15);   // ragged last line of a paragraph
 
-  // split into paragraphs using vertical gap + indent + short-previous-line
+  // Split into paragraphs. The vertical-gap test is relative to the LOCAL font
+  // size (so a large title's wide line spacing isn't mistaken for a paragraph
+  // break), and indent/short tests are guarded against centred lines (titles,
+  // author blocks) which inset on both sides.
   const groups = [];
   let g = [L[0]];
   for (let i = 1; i < L.length; i++) {
     const prev = L[i - 1], cur = L[i];
-    const bigGap    = Math.abs(prev.y - cur.y) > lineH * 1.3;
-    const indented  = cur.startX > leftMargin + indentTol;
-    const prevShort = prev.endX < rightEdge - shortTol;
-    if (bigGap || indented || prevShort) { groups.push(g); g = []; }
+    const fh = Math.max(prev.fontH, cur.fontH) || 12;
+
+    const bigGap       = Math.abs(prev.y - cur.y) > fh * 1.5;
+    const reachesRight = cur.endX > rightEdge - shortTol;
+    const indented     = cur.startX > leftMargin + indentTol && reachesRight;
+    const curAtMargin  = cur.startX <= leftMargin + indentTol;
+    const shortBreak   = prev.endX < rightEdge - shortTol && curAtMargin;
+
+    if (bigGap || indented || shortBreak) { groups.push(g); g = []; }
     g.push(cur);
   }
   if (g.length) groups.push(g);
