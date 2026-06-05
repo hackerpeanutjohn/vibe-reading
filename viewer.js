@@ -58,6 +58,7 @@ const els = {
   askStop:       document.getElementById('askStop'),
   askAnswer:     document.getElementById('askAnswer'),
   askClose:      document.getElementById('askClose'),
+  askHead:       document.getElementById('askHead'),
 };
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -700,6 +701,25 @@ function setupSelectionAsk() {
   els.askInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askNano(); }
   });
+
+  // Drag the floating panel by its header
+  let dragP = null;
+  els.askHead.addEventListener('mousedown', (e) => {
+    if (e.target === els.askClose) return;
+    const box = els.askModal.getBoundingClientRect();
+    dragP = { dx: e.clientX - box.left, dy: e.clientY - box.top };
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragP) return;
+    const x = Math.max(0, Math.min(window.innerWidth  - 80, e.clientX - dragP.dx));
+    const y = Math.max(0, Math.min(window.innerHeight - 40, e.clientY - dragP.dy));
+    els.askModal.style.left = x + 'px';
+    els.askModal.style.top  = y + 'px';
+    els.askModal.style.right = 'auto';
+    els.askModal.style.bottom = 'auto';
+  });
+  document.addEventListener('mouseup', () => { dragP = null; });
 }
 
 let askAbort   = null;

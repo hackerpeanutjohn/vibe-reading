@@ -247,21 +247,25 @@ body {
 .ask-float:hover { background: #5a95f5; }
 
 /* ── Ask-Nano modal ────────────────────────────────────────── */
+/* Floating, non-blocking panel — no full-screen backdrop, so the rest of the
+   UI stays usable while Gemini is answering. Draggable by its header. */
 .ask-modal {
-  position: fixed; inset: 0; z-index: 200;
-  background: rgba(0,0,0,0.6);
-  display: flex; align-items: center; justify-content: center;
+  position: fixed; z-index: 200;
+  right: 24px; bottom: 24px;
+  display: flex;
 }
 .ask-box {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 12px; padding: 18px;
-  width: min(560px, 90vw); max-height: 80vh; display: flex; flex-direction: column;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+  border-radius: 12px; padding: 16px;
+  width: min(440px, 92vw); max-height: 70vh; display: flex; flex-direction: column;
+  box-shadow: 0 14px 44px rgba(0,0,0,0.7);
 }
 .ask-head {
   display: flex; justify-content: space-between; align-items: center;
-  font-size: 15px; font-weight: 700; color: var(--accent); margin-bottom: 12px;
+  font-size: 14px; font-weight: 700; color: var(--accent); margin-bottom: 12px;
+  cursor: move; user-select: none;
 }
+.ask-hint-drag { font-size: 10px; font-weight: 400; color: var(--faint); }
 .ask-close { cursor: pointer; color: var(--muted); font-size: 16px; }
 .ask-close:hover { color: var(--text); }
 .ask-sel-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
