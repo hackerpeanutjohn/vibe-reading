@@ -1,14 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "PDF 中文翻譯",
-  "version": "1.1.0",
-  "description": "使用 Chrome 內建 Gemini Nano AI 將 PDF 逐段翻譯成繁體中文，點翻譯可定位高亮原文段落，完全離線運行",
+  "name": "氛圍閱讀 Vibe Reading",
+  "version": "1.2.0",
+  "description": "使用 Chrome 內建 Gemini Nano AI 將 PDF 逐段翻譯成繁體中文，點翻譯可雙向定位高亮原文段落，附 AI 摘要與反白問答，完全離線運行",
   "permissions": ["activeTab", "tabs", "storage", "contextMenus"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "PDF 中文翻譯（點擊開啟翻譯檢視器）"
+    "default_title": "氛圍閱讀 Vibe Reading（點擊開啟翻譯檢視器）"
   }
 }
