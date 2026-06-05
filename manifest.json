@@ -10,5 +10,11 @@
   },
   "action": {
     "default_title": "氛圍閱讀 Vibe Reading（點擊開啟翻譯檢視器）"
+  },
+  "commands": {
+    "translate-pdf": {
+      "suggested_key": { "default": "Alt+T", "mac": "Alt+T" },
+      "description": "用氛圍閱讀翻譯目前分頁的 PDF"
+    }
   }
 }

@@ -44,3 +44,10 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 // ─── Toolbar icon click ─────────────────────────────────────────────────────────
 chrome.action.onClicked.addListener(openViewer);
+
+// ─── Keyboard shortcut (Alt+T) ────────────────────────────────────────────────
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command !== 'translate-pdf') return;
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab) openViewer(tab);
+});
