@@ -68,12 +68,14 @@ let renderScale   = 1;
 let detectedSource = 'en';
 let selectedText  = '';
 let summaryDone   = false;
+let segEls        = [];     // paragraph index -> right-pane segment element
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   populateTargetSelect();
   setupDivider();
   setupSelectionAsk();
+  setupReverseLocate();
 
   els.translateBtn.addEventListener('click', () => startTranslation(true));
   els.stopBtn.addEventListener('click', () => {
@@ -186,6 +188,7 @@ async function loadAndRenderPdf() {
 
     const wrap = document.createElement('div');
     wrap.className = 'page-wrap';
+    wrap.dataset.page = p;
     wrap.style.width  = viewport.width + 'px';
     wrap.style.height = viewport.height + 'px';
 
@@ -356,6 +359,7 @@ async function startTranslation(isManual) {
 
     const total = paragraphs.length;
     const shells = paragraphs.map((p, i) => appendSegment(p, i));
+    segEls = shells;
     const concurrency = translatorObj.type === 'translator' ? 4 : 1;
 
     // Requirement 5 — generate AI summary with Nano.
@@ -517,6 +521,73 @@ function locate(idx, segEl) {
   hl.style.height = (Math.abs(by - ay) + pad * 2) + 'px';
   pg.wrap.appendChild(hl);
   hl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// ─── Reverse: click original text on the left → highlight translation on right ───
+function setupReverseLocate() {
+  els.pdfInner.addEventListener('click', (e) => {
+    // If the user just made a text selection, leave it for the "ask AI" flow
+    const sel = window.getSelection();
+    if (sel && sel.toString().trim().length >= 2) return;
+
+    const wrap = e.target.closest('.page-wrap');
+    if (!wrap) return;
+    const pageNum = Number(wrap.dataset.page);
+    const pg = pageWraps[pageNum];
+    if (!pg) return;
+
+    const box = wrap.getBoundingClientRect();
+    const [px, py] = pg.viewport.convertToPdfPoint(e.clientX - box.left, e.clientY - box.top);
+
+    const idx = findParagraphAt(pageNum, px, py);
+    if (idx < 0) return;
+    reverseLocate(idx, pg, paragraphs[idx]);
+  });
+}
+
+function findParagraphAt(page, px, py) {
+  let best = -1, bestArea = Infinity, nearest = -1, nearestDy = Infinity;
+  for (let i = 0; i < paragraphs.length; i++) {
+    const p = paragraphs[i];
+    if (p.page !== page) continue;
+    const r = p.rect;
+    if (px >= r.x0 && px <= r.x1 && py >= r.y0 && py <= r.y1) {
+      const area = (r.x1 - r.x0) * (r.y1 - r.y0);
+      if (area < bestArea) { bestArea = area; best = i; }
+    }
+    const cy = (r.y0 + r.y1) / 2;
+    const dy = Math.abs(cy - py);
+    if (dy < nearestDy) { nearestDy = dy; nearest = i; }
+  }
+  // exact hit preferred; otherwise the vertically closest paragraph (within reason)
+  if (best >= 0) return best;
+  return nearestDy < 40 ? nearest : -1;
+}
+
+function reverseLocate(idx, pg, para) {
+  const seg = segEls[idx];
+  if (!seg) return;
+
+  // highlight the segment on the right
+  document.querySelectorAll('.seg-active').forEach(e => e.classList.remove('seg-active'));
+  seg.classList.add('seg-active');
+  seg.classList.remove('seg-flash');
+  void seg.offsetWidth;            // restart CSS animation
+  seg.classList.add('seg-flash');
+  seg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  // also draw the highlight box on the PDF for visual confirmation
+  document.querySelectorAll('.hl').forEach(e => e.remove());
+  const [ax, ay] = pg.viewport.convertToViewportPoint(para.rect.x0, para.rect.y0);
+  const [bx, by] = pg.viewport.convertToViewportPoint(para.rect.x1, para.rect.y1);
+  const pad = 4;
+  const hl = document.createElement('div');
+  hl.className = 'hl';
+  hl.style.left   = (Math.min(ax, bx) - pad) + 'px';
+  hl.style.top    = (Math.min(ay, by) - pad) + 'px';
+  hl.style.width  = (Math.abs(bx - ax) + pad * 2) + 'px';
+  hl.style.height = (Math.abs(by - ay) + pad * 2) + 'px';
+  pg.wrap.appendChild(hl);
 }
 
 // ─── Selection → ask Gemini Nano (requirement 6) ─────────────────────────────────
