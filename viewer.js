@@ -457,13 +457,61 @@ function gotoPage(delta) {
 
 function extractParagraphs(items) {
   // Keep non-empty, horizontal text only — drop rotated items such as the
-  // vertical "arXiv:…" watermark, which otherwise corrupts margin geometry.
+  // vertical "arXiv:…" watermark, which otherwise corrupts margin/column geometry.
   const its = items.filter(it =>
     it.str.trim() &&
     Math.abs(it.transform[1]) < 2 && Math.abs(it.transform[2]) < 2);
   if (!its.length) return [];
 
-  its.sort((a, b) => {
+  // Detect a two-column layout and process each column independently, so the
+  // reading order stays within a column instead of jumping across at the same Y.
+  const out = [];
+  for (const col of splitColumns(its)) out.push(...paragraphsFromItems(col));
+  return out;
+}
+
+// → [fullWidth, leftColumn, rightColumn] for a 2-column page, else [allItems].
+function splitColumns(its) {
+  const minX = Math.min(...its.map(it => it.transform[4]));
+  const maxX = Math.max(...its.map(it => it.transform[4] + (it.width || 0)));
+  const pageW = maxX - minX;
+  if (pageW < 50) return [its];
+
+  // text-coverage histogram across X; a real column gutter is an empty band
+  const bin = 4;
+  const n = Math.ceil(pageW / bin) + 1;
+  const cov = new Array(n).fill(0);
+  for (const it of its) {
+    const s = Math.max(0, Math.floor((it.transform[4] - minX) / bin));
+    const e = Math.min(n, Math.ceil((it.transform[4] + (it.width || 0) - minX) / bin));
+    for (let i = s; i < e; i++) cov[i]++;
+  }
+
+  // longest empty run within the central 30–70% band
+  const lo = Math.floor(n * 0.30), hi = Math.min(n - 1, Math.ceil(n * 0.70));
+  let bestStart = -1, bestLen = 0, curStart = -1, curLen = 0;
+  for (let i = lo; i <= hi; i++) {
+    if (cov[i] === 0) { if (curLen === 0) curStart = i; curLen++; if (curLen > bestLen) { bestLen = curLen; bestStart = curStart; } }
+    else curLen = 0;
+  }
+  if (bestLen * bin < 12) return [its];   // no real gutter → single column
+
+  const gutterX = minX + (bestStart + bestLen / 2) * bin;
+  const tol = pageW * 0.02;
+  const full = [], left = [], right = [];
+  for (const it of its) {
+    const s = it.transform[4], e = it.transform[4] + (it.width || 0);
+    if (s < gutterX - tol && e > gutterX + tol) full.push(it);      // spans gutter → full width
+    else if ((s + e) / 2 < gutterX) left.push(it);
+    else right.push(it);
+  }
+  if (Math.min(left.length, right.length) < its.length * 0.1) return [its];  // false gutter
+  return [full, left, right].filter(c => c.length);
+}
+
+function paragraphsFromItems(its) {
+  if (!its.length) return [];
+  its = its.slice().sort((a, b) => {
     const dy = b.transform[5] - a.transform[5];
     return Math.abs(dy) > 2 ? dy : a.transform[4] - b.transform[4];
   });
