@@ -563,13 +563,15 @@ function paragraphsFromItems(its) {
     const prev = L[i - 1], cur = L[i];
     const fh = Math.max(prev.fontH, cur.fontH) || 12;
 
-    const bigGap       = Math.abs(prev.y - cur.y) > fh * 1.5;
+    // Paragraph break on a clear vertical gap (relative to local font size, so
+    // large-font titles stay intact) or a first-line indent. The previous
+    // "short last line" rule was dropped — superscript/footnote markers and
+    // ragged line ends made it over-segment paragraphs into fragments.
+    const bigGap       = Math.abs(prev.y - cur.y) > fh * 1.4;
     const reachesRight = cur.endX > rightEdge - shortTol;
     const indented     = cur.startX > leftMargin + indentTol && reachesRight;
-    const curAtMargin  = cur.startX <= leftMargin + indentTol;
-    const shortBreak   = prev.endX < rightEdge - shortTol && curAtMargin;
 
-    if (bigGap || indented || shortBreak) { groups.push(g); g = []; }
+    if (bigGap || indented) { groups.push(g); g = []; }
     g.push(cur);
   }
   if (g.length) groups.push(g);
