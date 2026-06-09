@@ -227,15 +227,8 @@
     document.querySelectorAll('[' + TRANSLATED_ATTR + ']').forEach((el) => el.removeAttribute(TRANSLATED_ATTR));
   }
 
-  function hasTranslations() {
-    return !!document.querySelector('.' + INLINE_CLASS);
-  }
-
-  // The ball is a universal toggle: if ANYTHING is translated (a full-page run OR
-  // just a few Shift-hover paragraphs), clicking restores the original; only when
-  // nothing is translated does it start a full-page translation.
   function togglePage() {
-    if (pageActive || hasTranslations()) {
+    if (pageActive) {
       clearTranslations();
       pageActive = false;
       status('已切回原文');
@@ -266,13 +259,36 @@
   const modLabel = () => (hoverModifier === 'Meta' ? '⌘' : hoverModifier === 'Control' ? 'Ctrl' : hoverModifier);
 
   let hoverThrottle = 0;
-  function translateAtCursor() {
+  let suppressBlock = null;   // block just toggled-off; don't auto re-translate until the cursor leaves it
+
+  // Remove just one block's inline translation (its sibling node, or a child for li/td).
+  function removeBlockTranslation(block) {
+    let node = block.querySelector(':scope > .' + INLINE_CLASS);
+    if (!node) {
+      const sib = block.nextElementSibling;
+      if (sib && sib.classList && sib.classList.contains(INLINE_CLASS)) node = sib;
+    }
+    if (node) node.remove();
+    block.removeAttribute(TRANSLATED_ATTR);
+  }
+
+  // toggle=true → a fresh modifier press: translate the block at the cursor, or if
+  // it is ALREADY translated, remove just that block's translation (press the
+  // modifier again over it to hide it). toggle=false → sweeping with the modifier
+  // held: only translate untranslated blocks, never auto-remove.
+  function actAtCursor(toggle) {
     const el = document.elementFromPoint(lastX, lastY);
     const block = el && el.closest && el.closest(BLOCK_SELECTOR);
-    if (!block || !shouldTranslate(block)) return;
+    if (block !== suppressBlock) suppressBlock = null;     // moved to another block → re-arm
+    if (!block) return;
+    if (block.hasAttribute(TRANSLATED_ATTR)) {
+      if (toggle) { removeBlockTranslation(block); suppressBlock = block; }
+      return;
+    }
+    if (block === suppressBlock) return;                   // just removed; wait until the cursor leaves it
+    if (!shouldTranslate(block)) return;
     ensureEngine(currentTarget())
       .then(() => { abortCtrl = abortCtrl || new AbortController(); return translateEl(block, abortCtrl.signal); })
-      .then(() => updateToolbarState())   // ball now reflects "has translations → click to restore"
       .catch(() => {});
   }
   function onMouseMove(e) {
@@ -281,11 +297,11 @@
     const now = e.timeStamp || 0;
     if (now - hoverThrottle < 60) return;   // throttle while sweeping
     hoverThrottle = now;
-    translateAtCursor();
+    actAtCursor(false);
   }
-  function onKeyDown(e) { if (hoverEnabled && modifierActive(e) && !modDown) { modDown = true; translateAtCursor(); } }
-  function onKeyUp(e)   { if (modDown && !modifierActive(e)) modDown = false; }
-  function onWinBlur()  { modDown = false; }
+  function onKeyDown(e) { if (hoverEnabled && modifierActive(e) && !modDown) { modDown = true; actAtCursor(true); } }
+  function onKeyUp(e)   { if (modDown && !modifierActive(e)) { modDown = false; suppressBlock = null; } }
+  function onWinBlur()  { modDown = false; suppressBlock = null; }
 
   function setHover(on) {
     hoverEnabled = on;
@@ -360,10 +376,9 @@
   function updateToolbarState() {
     const bar = document.getElementById(TOOLBAR_ID);
     if (!bar) return;
-    const active = pageActive || hasTranslations();
-    bar.classList.toggle('vibe-active', active);
+    bar.classList.toggle('vibe-active', pageActive);
     const ball = bar.querySelector('.vibe-ball');
-    if (ball) ball.title = active ? '點擊切回原文（懸浮選單可調整）' : '點擊翻譯整頁（懸浮選單可調整）';
+    if (ball) ball.title = pageActive ? '點擊切回原文（懸浮選單可調整）' : '點擊翻譯整頁（懸浮選單可調整）';
   }
   function ensureToolbar() {
     if (document.getElementById(TOOLBAR_ID)) return;
@@ -378,7 +393,7 @@
         `<label class="vibe-tb-hover"><input type="checkbox"> <span class="vibe-tb-hovertxt">懸停(${modLabel()})</span></label>` +
         '<span class="vibe-tb-status">就緒</span>' +
         '<button class="vibe-tb-settings" title="設定（修飾鍵等）">⚙</button>' +
-        '<button class="vibe-tb-hide" title="還原原文並隱藏懸浮球">✕</button>' +
+        '<button class="vibe-tb-hide" title="隱藏懸浮球（本次瀏覽）">✕</button>' +
       '</div>';
     document.documentElement.appendChild(bar);
 
@@ -388,9 +403,7 @@
     bar.querySelector('.vibe-tb-hover input').addEventListener('change', (e) => setHover(e.target.checked));
     bar.querySelector('.vibe-ball').addEventListener('click', togglePage);
     bar.querySelector('.vibe-tb-settings').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'VIBE_OPEN_OPTIONS' }));
-    bar.querySelector('.vibe-tb-hide').addEventListener('click', () => {
-      clearTranslations(); pageActive = false; setHover(false); hideSelCard(); removeToolbar();
-    });
+    bar.querySelector('.vibe-tb-hide').addEventListener('click', removeToolbar);
     updateHoverHint();
     updateToolbarState();
   }
