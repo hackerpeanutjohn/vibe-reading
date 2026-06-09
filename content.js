@@ -227,8 +227,15 @@
     document.querySelectorAll('[' + TRANSLATED_ATTR + ']').forEach((el) => el.removeAttribute(TRANSLATED_ATTR));
   }
 
+  function hasTranslations() {
+    return !!document.querySelector('.' + INLINE_CLASS);
+  }
+
+  // The ball is a universal toggle: if ANYTHING is translated (a full-page run OR
+  // just a few Shift-hover paragraphs), clicking restores the original; only when
+  // nothing is translated does it start a full-page translation.
   function togglePage() {
-    if (pageActive) {
+    if (pageActive || hasTranslations()) {
       clearTranslations();
       pageActive = false;
       status('已切回原文');
@@ -264,7 +271,8 @@
     const block = el && el.closest && el.closest(BLOCK_SELECTOR);
     if (!block || !shouldTranslate(block)) return;
     ensureEngine(currentTarget())
-      .then(() => { abortCtrl = abortCtrl || new AbortController(); translateEl(block, abortCtrl.signal); })
+      .then(() => { abortCtrl = abortCtrl || new AbortController(); return translateEl(block, abortCtrl.signal); })
+      .then(() => updateToolbarState())   // ball now reflects "has translations → click to restore"
       .catch(() => {});
   }
   function onMouseMove(e) {
@@ -352,9 +360,10 @@
   function updateToolbarState() {
     const bar = document.getElementById(TOOLBAR_ID);
     if (!bar) return;
-    bar.classList.toggle('vibe-active', pageActive);
+    const active = pageActive || hasTranslations();
+    bar.classList.toggle('vibe-active', active);
     const ball = bar.querySelector('.vibe-ball');
-    if (ball) ball.title = pageActive ? '點擊切回原文（懸浮選單可調整）' : '點擊翻譯整頁（懸浮選單可調整）';
+    if (ball) ball.title = active ? '點擊切回原文（懸浮選單可調整）' : '點擊翻譯整頁（懸浮選單可調整）';
   }
   function ensureToolbar() {
     if (document.getElementById(TOOLBAR_ID)) return;
@@ -369,7 +378,7 @@
         `<label class="vibe-tb-hover"><input type="checkbox"> <span class="vibe-tb-hovertxt">懸停(${modLabel()})</span></label>` +
         '<span class="vibe-tb-status">就緒</span>' +
         '<button class="vibe-tb-settings" title="設定（修飾鍵等）">⚙</button>' +
-        '<button class="vibe-tb-hide" title="隱藏懸浮球（本次瀏覽）">✕</button>' +
+        '<button class="vibe-tb-hide" title="還原原文並隱藏懸浮球">✕</button>' +
       '</div>';
     document.documentElement.appendChild(bar);
 
@@ -379,7 +388,9 @@
     bar.querySelector('.vibe-tb-hover input').addEventListener('change', (e) => setHover(e.target.checked));
     bar.querySelector('.vibe-ball').addEventListener('click', togglePage);
     bar.querySelector('.vibe-tb-settings').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'VIBE_OPEN_OPTIONS' }));
-    bar.querySelector('.vibe-tb-hide').addEventListener('click', removeToolbar);
+    bar.querySelector('.vibe-tb-hide').addEventListener('click', () => {
+      clearTranslations(); pageActive = false; setHover(false); hideSelCard(); removeToolbar();
+    });
     updateHoverHint();
     updateToolbarState();
   }
