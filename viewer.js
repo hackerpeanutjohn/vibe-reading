@@ -463,6 +463,83 @@ function extractParagraphs(items) {
     Math.abs(it.transform[1]) < 2 && Math.abs(it.transform[2]) < 2);
   if (!its.length) return [];
 
+  // Multi-column papers place left- and right-column lines on the SAME baseline,
+  // so grouping by y alone splices them into one cross-column "sentence". Split
+  // into per-column item buckets (in reading order) first, then extract
+  // paragraphs within each bucket. A single-column page yields one bucket, so
+  // its behaviour is unchanged.
+  const out = [];
+  for (const bucket of splitColumns(its)) out.push(...paragraphsFromItems(bucket));
+  return out;
+}
+
+const itemSpan = it => [it.transform[4], it.transform[4] + (it.width || 0)];
+
+// Detect a 1- vs 2-column layout; return item buckets in reading order.
+function splitColumns(its) {
+  let pageMin = Infinity, pageMax = -Infinity;
+  for (const it of its) { const [s, e] = itemSpan(it); pageMin = Math.min(pageMin, s); pageMax = Math.max(pageMax, e); }
+  const width = pageMax - pageMin;
+  if (width <= 0 || its.length < 8) return [its];
+  const centerX = (pageMin + pageMax) / 2;
+
+  const crossings = (x) => {
+    let n = 0; for (const it of its) { const [s, e] = itemSpan(it); if (s < x && e > x) n++; } return n;
+  };
+  // Gutter = x near the centre crossed by the fewest items.
+  let gutter = centerX, best = Infinity;
+  for (let f = -0.15; f <= 0.15 + 1e-9; f += 0.02) {
+    const x = centerX + f * width, c = crossings(x);
+    if (c < best) { best = c; gutter = x; }
+  }
+  // Require few crossings AND substantial content on both sides → real 2-column.
+  let left = 0, right = 0;
+  for (const it of its) { const [s, e] = itemSpan(it); if (e <= gutter) left++; else if (s >= gutter) right++; }
+  const n = its.length;
+  if (best > n * 0.10 || left < n * 0.15 || right < n * 0.15) return [its];
+
+  return bandSplit(its, gutter);
+}
+
+// Walk lines top→bottom: full-width lines stay in place; two-column bands emit
+// their left-column items then right-column items. Preserves reading order
+// across full-width interludes (title, abstract, cross-column figures).
+function bandSplit(its, gutter) {
+  const sorted = its.slice().sort((a, b) => {
+    const dy = b.transform[5] - a.transform[5];
+    return Math.abs(dy) > 2 ? dy : a.transform[4] - b.transform[4];
+  });
+  const lines = [];
+  let ln = { y: sorted[0].transform[5], items: [sorted[0]] };
+  for (let i = 1; i < sorted.length; i++) {
+    const y = sorted[i].transform[5];
+    if (Math.abs(y - ln.y) <= 3) ln.items.push(sorted[i]);
+    else { lines.push(ln); ln = { y, items: [sorted[i]] }; }
+  }
+  lines.push(ln);
+
+  const buckets = [];
+  let mode = null, full = null, lft = null, rgt = null;
+  const flushLR   = () => { if (lft && lft.length) buckets.push(lft); if (rgt && rgt.length) buckets.push(rgt); lft = rgt = null; };
+  const flushFull = () => { if (full && full.length) buckets.push(full); full = null; };
+  for (const l of lines) {
+    const isFull = l.items.some(it => { const [s, e] = itemSpan(it); return s < gutter && e > gutter; });
+    if (isFull) {
+      if (mode === 'lr') flushLR();
+      mode = 'full'; full = full || []; full.push(...l.items);
+    } else {
+      if (mode === 'full') flushFull();
+      mode = 'lr'; lft = lft || []; rgt = rgt || [];
+      for (const it of l.items) { const c = it.transform[4] + (it.width || 0) / 2; (c < gutter ? lft : rgt).push(it); }
+    }
+  }
+  flushLR(); flushFull();
+  return buckets;
+}
+
+function paragraphsFromItems(its) {
+  if (!its.length) return [];
+
   its.sort((a, b) => {
     const dy = b.transform[5] - a.transform[5];
     return Math.abs(dy) > 2 ? dy : a.transform[4] - b.transform[4];
@@ -506,21 +583,35 @@ function extractParagraphs(items) {
   const indentTol = Math.max(12, colWidth * 0.025);  // first-line indent
   const shortTol  = Math.max(16, colWidth * 0.15);   // ragged last line of a paragraph
 
-  // Split into paragraphs. The vertical-gap test is relative to the LOCAL font
-  // size (so a large title's wide line spacing isn't mistaken for a paragraph
-  // break), and indent/short tests are guarded against centred lines (titles,
-  // author blocks) which inset on both sides.
+  // Is this block justified (flush right margin)? If so, a line stopping short of
+  // the right edge marks a paragraph end. For ragged / left-aligned text MOST
+  // lines stop short, so that test would split every single line into its own
+  // paragraph — there, rely on vertical gap + indent only.
+  const justified = L.filter(l => l.endX > rightEdge - shortTol).length >= L.length * 0.6;
+
+  // Typical in-paragraph line gap for THIS block. A paragraph break is a gap
+  // clearly larger than that — measured relative to the block's own leading, so
+  // loosely-leaded text isn't split on every line, and not tied to the
+  // (unreliable) reported glyph height.
+  const gaps = [];
+  for (let i = 1; i < L.length; i++) gaps.push(Math.abs(L[i - 1].y - L[i].y));
+  const sortedGaps = gaps.slice().sort((a, b) => a - b);
+  const medianGap = sortedGaps.length ? sortedGaps[Math.floor(sortedGaps.length / 2)] : 0;
+
+  // Split into paragraphs. indent/short tests are guarded against centred lines
+  // (titles, author blocks) which inset on both sides.
   const groups = [];
   let g = [L[0]];
   for (let i = 1; i < L.length; i++) {
     const prev = L[i - 1], cur = L[i];
     const fh = Math.max(prev.fontH, cur.fontH) || 12;
 
-    const bigGap       = Math.abs(prev.y - cur.y) > fh * 1.5;
+    const lineGap      = Math.abs(prev.y - cur.y);
+    const bigGap       = (gaps.length >= 3 && medianGap > 0) ? lineGap > medianGap * 1.5 + 1 : lineGap > fh * 1.5;
     const reachesRight = cur.endX > rightEdge - shortTol;
     const indented     = cur.startX > leftMargin + indentTol && reachesRight;
     const curAtMargin  = cur.startX <= leftMargin + indentTol;
-    const shortBreak   = prev.endX < rightEdge - shortTol && curAtMargin;
+    const shortBreak   = justified && prev.endX < rightEdge - shortTol && curAtMargin;
 
     if (bigGap || indented || shortBreak) { groups.push(g); g = []; }
     g.push(cur);
