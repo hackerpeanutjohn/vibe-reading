@@ -3,32 +3,19 @@
 const PDFJS = window.pdfjsLib;
 PDFJS.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('lib/pdf.worker.min.js');
 
-// ─── Target-language options ────────────────────────────────────────────────────
-const TARGET_LANGS = [
-  { code: 'zh-Hant', name: '繁體中文' },
-  { code: 'zh-Hans', name: '简体中文' },
-  { code: 'en',      name: 'English' },
-  { code: 'ja',      name: '日本語' },
-  { code: 'ko',      name: '한국어' },
-  { code: 'fr',      name: 'Français' },
-  { code: 'de',      name: 'Deutsch' },
-  { code: 'es',      name: 'Español' },
-  { code: 'pt',      name: 'Português' },
-  { code: 'ru',      name: 'Русский' },
-];
-
-function browserDefaultTarget() {
-  const l = (navigator.language || 'en').toLowerCase();
-  if (l.startsWith('zh')) {
-    return (l.includes('cn') || l.includes('hans') || l.includes('sg')) ? 'zh-Hans' : 'zh-Hant';
-  }
-  const primary = l.split('-')[0];
-  return TARGET_LANGS.some(t => t.code === primary) ? primary : 'zh-Hant';
-}
-
-function langName(code) {
-  return (TARGET_LANGS.find(t => t.code === code) || {}).name || code;
-}
+// ─── Shared translation engine (translate-core.js) ──────────────────────────────
+// TARGET_LANGS / langName / browserDefaultTarget / detectSourceLang /
+// initTranslator / doTranslate now live in window.VibeTranslate so the in-page
+// content script can reuse the exact same engine. The PDF viewer behaviour is
+// unchanged — it just sources these from the shared module.
+const {
+  TARGET_LANGS,
+  langName,
+  browserDefaultTarget,
+  detectSourceLang,
+  initTranslator,
+  doTranslate,
+} = window.VibeTranslate;
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 const els = {
@@ -116,7 +103,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   try {
     await loadAndRenderPdf();
-    detectedSource = await detectSourceLang();
+    detectedSource = await detectSourceLang(paragraphs.slice(0, 5).map(p => p.text).join(' ').slice(0, 1000));
     els.srcLangInfo.textContent = `偵測來源：${detectedSource}`;
     els.translateBtn.disabled = false;
     setStatus('PDF 已載入');
@@ -632,79 +619,9 @@ function paragraphsFromItems(its) {
   }).filter(p => p.text.length > 20);
 }
 
-// ─── Source-language auto-detection (requirement 2) ─────────────────────────────
-async function detectSourceLang() {
-  const sample = paragraphs.slice(0, 5).map(p => p.text).join(' ').slice(0, 1000);
-  if (!sample) return 'en';
-  if ('LanguageDetector' in self) {
-    try {
-      const avail = await LanguageDetector.availability();
-      if (avail !== 'unavailable') {
-        const det = await LanguageDetector.create();
-        const res = await det.detect(sample);
-        if (res?.[0]?.detectedLanguage && res[0].detectedLanguage !== 'und') {
-          return res[0].detectedLanguage;
-        }
-      }
-    } catch (e) {
-      console.warn('[PDF翻譯] 語言偵測失敗，預設 en：', e);
-    }
-  }
-  return 'en';
-}
-
-// ─── Translator init ──────────────────────────────────────────────────────────
-async function initTranslator(sourceLang, targetLang) {
-  if (sourceLang === targetLang) sourceLang = sourceLang === 'en' ? 'fr' : 'en'; // avoid same-pair error
-
-  if ('Translator' in self) {
-    try {
-      const avail = await Translator.availability({ sourceLanguage: sourceLang, targetLanguage: targetLang });
-      if (avail !== 'unavailable') {
-        if (avail === 'downloadable') { setStatus('首次使用：下載翻譯語言包...'); setProgress(0, '0%'); }
-        const t = await Translator.create({
-          sourceLanguage: sourceLang,
-          targetLanguage: targetLang,
-          monitor(m) {
-            m.addEventListener('downloadprogress', (e) => {
-              const pct = Math.round(e.loaded * 100);
-              setStatus(`下載翻譯語言包 ${pct}%（僅首次）...`);
-              setProgress(e.loaded, `${pct}%`);
-            });
-          },
-        });
-        return { type: 'translator', t, targetName: langName(targetLang) };
-      }
-    } catch (e) {
-      console.warn('[PDF翻譯] Translator 初始化失敗，改用 Gemini Nano：', e);
-    }
-  }
-
-  if ('LanguageModel' in self) {
-    setStatus('首次使用：載入 Gemini Nano 模型（約 2.4GB）...');
-    setIndeterminate(true);
-    const targetName = langName(targetLang);
-    const session = await LanguageModel.create({
-      initialPrompts: [{ role: 'system', content: `你是專業翻譯員。請將輸入的文字翻譯成${targetName}，只輸出翻譯結果，不加任何說明文字。` }],
-      monitor(m) {
-        m.addEventListener('downloadprogress', (e) => {
-          const pct = Math.round(e.loaded * 100);
-          setStatus(`下載 Gemini Nano 模型 ${pct}%（僅首次）...`);
-          setProgress(e.loaded, `${pct}%`);
-        });
-      },
-    });
-    setIndeterminate(false);
-    return { type: 'lm', session, targetName };
-  }
-
-  throw new Error('無法初始化任何翻譯引擎。');
-}
-
-async function doTranslate(trans, text) {
-  if (trans.type === 'translator') return await trans.t.translate(text);
-  return await trans.session.prompt(`翻譯成${trans.targetName}（只輸出翻譯結果）：\n${text}`);
-}
+// ─── Translation engine ─────────────────────────────────────────────────────────
+// detectSourceLang / initTranslator / doTranslate are provided by translate-core.js
+// (window.VibeTranslate) and shared with the in-page content script (content.js).
 
 // ─── Translation flow ───────────────────────────────────────────────────────────
 async function startTranslation(isManual) {
@@ -721,7 +638,9 @@ async function startTranslation(isManual) {
 
   try {
     setStatus('初始化翻譯引擎...');
-    translatorObj = await initTranslator(detectedSource, els.targetLang.value);
+    translatorObj = await initTranslator(detectedSource, els.targetLang.value, {
+      onStatus: setStatus, onProgress: setProgress, onIndeterminate: setIndeterminate,
+    });
 
     const total = paragraphs.length;
     const shells = paragraphs.map((p, i) => appendSegment(p, i));
